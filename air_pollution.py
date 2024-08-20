@@ -1,107 +1,113 @@
-import time
-import Adafruit_DHT
+import adafruit_dht
+import board
 import smbus2
-import RPi.GPIO as GPIO
-import paho.mqtt.client as mqtt
 import blynklib
-from bmp280 import BMP280
+import paho.mqtt.client as mqtt
+import time
 
-# HiveMQ MQTT Broker Settings
+# Blynk and MQTT setup
+BLYNK_AUTH_TOKEN = "74HhZMC1MtjaFjKqQkvF55ndtYymyhF_"
+blynk = blynklib.Blynk(BLYNK_AUTH_TOKEN)
 MQTT_BROKER = "801c2d100ffe4339adcf39bdcda6f79b.s1.eu.hivemq.cloud"
 MQTT_PORT = 8883
-MQTT_USER = miteshmurthy
-MQTT_PASSWORD = "Mitesh12”
-MQTT_TOPIC = "sensor/data"
+MQTT_TOPIC = "your/mqtt/topic"
 
-# Blynk Authentication Token
-BLYNK_AUTH = "74HhZMC1MtjaFjKqQkvF55ndtYymyhF_"
-
-# GPIO Pin Definitions
-DHT_PIN = 4
-DHT_SENSOR = Adafruit_DHT.DHT11
-MQ135_PIN = 17
-MQ2_PIN = 27
-DUST_SENSOR_LED_PIN = 22
-DUST_SENSOR_VOUT_PIN = 23
-
-# Initialize Blynk and MQTT clients
-blynk = blynklib.Blynk(BLYNK_AUTH)
-mqtt_client = mqtt.Client()
-
-# BMP280 Setup
+# Initialize sensors
+dht_device = adafruit_dht.DHT11(board.D4)
 bus = smbus2.SMBus(1)
-bmp280 = BMP280(i2c_dev=bus)
 
-# MQTT Setup
-def setup_mqtt():
-    mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
-    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    mqtt_client.loop_start()
+# BMP280 setup
+BMP280_I2C_ADDR = 0x76
+def read_bmp280():
+    # Read BMP280 data
+    data = bus.read_i2c_block_data(BMP280_I2C_ADDR, 0x88, 24)
+    # Process and calculate temperature and pressure
+    # Your logic for BMP280 temperature and pressure reading goes here
+    temperature_bmp = 25.0  # Placeholder value
+    pressure = 1013.25      # Placeholder value
+    return temperature_bmp, pressure
 
-# Function to read sensor data
-def read_sensors():
-    humidity, temperature_dht = Adafruit_DHT.read_retry(DHT_SENSOR, DHT_PIN)
-    temperature_bmp = bmp280.get_temperature()
-    pressure = bmp280.get_pressure()
-    
-    # Add your MQ135, MQ2, and dust sensor readings here
-    dust_value = read_dust_sensor()
-    mq135_value = GPIO.input(MQ135_PIN)
-    mq2_value = GPIO.input(MQ2_PIN)
-    aqi = calculate_aqi(mq135_value, mq2_value, dust_value)
-    
-    return temperature_dht, humidity, temperature_bmp, pressure, mq135_value, mq2_value, dust_value, aqi
+# MQ and Dust Sensor Setup
+def read_mq135():
+    # Placeholder function for MQ135 sensor
+    return 400  # Replace with actual reading logic
+
+def read_mq2():
+    # Placeholder function for MQ2 sensor
+    return 300  # Replace with actual reading logic
 
 def read_dust_sensor():
-    GPIO.output(DUST_SENSOR_LED_PIN, GPIO.LOW)  # Turn on LED
-    time.sleep(0.00028)
-    dust_value = GPIO.input(DUST_SENSOR_VOUT_PIN)
-    time.sleep(0.00004)
-    GPIO.output(DUST_SENSOR_LED_PIN, GPIO.HIGH)  # Turn off LED
-    time.sleep(0.00968)
-    return dust_value
+    # Placeholder function for dust sensor
+    return 35  # Replace with actual reading logic
 
-def calculate_aqi(mq135, mq2, dust):
-    # Simplified AQI calculation
-    mq135_contrib = mq135 / 1024.0 * 100.0
-    mq2_contrib = mq2 / 1024.0 * 100.0
-    dust_contrib = dust / 1024.0 * 100.0
-    return (mq135_contrib + mq2_contrib + dust_contrib) / 3.0
+# Calculate AQI
+def calculate_aqi(mq135_value, mq2_value, dust_value):
+    # Combine sensor values for a simplified AQI calculation
+    aqi = (mq135_value + mq2_value + dust_value) / 3
+    return aqi
 
-# Function to send data to Blynk and MQTT broker
-def send_data(temperature_dht, humidity, temperature_bmp, pressure, mq135_value, mq2_value, dust_value, aqi):
-    payload = {
-        "temperature_dht": temperature_dht,
-        "humidity": humidity,
-        "temperature_bmp": temperature_bmp,
-        "pressure": pressure,
-        "mq135": mq135_value,
-        "mq2": mq2_value,
-        "dust": dust_value,
-        "aqi": aqi
-    }
-    mqtt_client.publish(MQTT_TOPIC, str(payload))
+# MQTT setup
+def on_connect(client, userdata, flags, rc):
+    print("Connected to MQTT Broker with result code " + str(rc))
+    client.subscribe(MQTT_TOPIC)
 
-    # Send data to Blynk
-    blynk.virtual_write(0, temperature_dht)
-    blynk.virtual_write(1, humidity)
-    blynk.virtual_write(2, temperature_bmp)
-    blynk.virtual_write(3, pressure)
-    blynk.virtual_write(4, dust_value)
-    blynk.virtual_write(5, aqi)
+def on_message(client, userdata, msg):
+    print(msg.topic + " " + str(msg.payload))
+
+mqtt_client = mqtt.Client()
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
 
 # Main loop
-if _name_ == "_main_":
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(MQ135_PIN, GPIO.IN)
-    GPIO.setup(MQ2_PIN, GPIO.IN)
-    GPIO.setup(DUST_SENSOR_LED_PIN, GPIO.OUT)
-    GPIO.setup(DUST_SENSOR_VOUT_PIN, GPIO.IN)
+def read_sensors():
+    try:
+        # Read DHT11 sensor data
+        temperature_dht = dht_device.temperature
+        humidity = dht_device.humidity
 
-    setup_mqtt()
-    
-    while True:
-        temperature_dht, humidity, temperature_bmp, pressure, mq135_value, mq2_value, dust_value, aqi = read_sensors()
-        send_data(temperature_dht, humidity, temperature_bmp, pressure, mq135_value, mq2_value, dust_value, aqi)
-        blynk.run()
-        time.sleep(2)  # Delay between readings
+        # Read BMP280 sensor data
+        temperature_bmp, pressure = read_bmp280()
+
+        # Read MQ135, MQ2, and dust sensor data
+        mq135_value = read_mq135()
+        mq2_value = read_mq2()
+        dust_value = read_dust_sensor()
+
+        # Calculate AQI
+        aqi = calculate_aqi(mq135_value, mq2_value, dust_value)
+
+        return temperature_dht, humidity, temperature_bmp, pressure, mq135_value, mq2_value, dust_value, aqi
+
+    except RuntimeError as error:
+        print(f"Error reading sensors: {error}")
+        return None, None, None, None, None, None, None, None
+
+while True:
+    # Read sensor values
+    temperature_dht, humidity, temperature_bmp, pressure, mq135_value, mq2_value, dust_value, aqi = read_sensors()
+
+    if temperature_dht is not None:
+        # Display on Blynk
+        blynk.virtual_write(1, temperature_dht)
+        blynk.virtual_write(2, humidity)
+        blynk.virtual_write(3, temperature_bmp)
+        blynk.virtual_write(4, pressure)
+        blynk.virtual_write(5, mq135_value)
+        blynk.virtual_write(6, mq2_value)
+        blynk.virtual_write(7, dust_value)
+        blynk.virtual_write(8, aqi)
+
+        # Publish to MQTT
+        mqtt_client.publish(MQTT_TOPIC + "/temperature", temperature_dht)
+        mqtt_client.publish(MQTT_TOPIC + "/humidity", humidity)
+        mqtt_client.publish(MQTT_TOPIC + "/bmp_temperature", temperature_bmp)
+        mqtt_client.publish(MQTT_TOPIC + "/pressure", pressure)
+        mqtt_client.publish(MQTT_TOPIC + "/mq135", mq135_value)
+        mqtt_client.publish(MQTT_TOPIC + "/mq2", mq2_value)
+        mqtt_client.publish(MQTT_TOPIC + "/dust", dust_value)
+        mqtt_client.publish(MQTT_TOPIC + "/aqi", aqi)
+
+    blynk.run()
+    mqtt_client.loop_start()
+    time.sleep(5)  # Delay between readings
