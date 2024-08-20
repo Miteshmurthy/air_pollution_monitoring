@@ -9,8 +9,8 @@ from bmp280 import BMP280
 # HiveMQ MQTT Broker Settings
 MQTT_BROKER = "801c2d100ffe4339adcf39bdcda6f79b.s1.eu.hivemq.cloud"
 MQTT_PORT = 8883
-MQTT_USER = “miteshmurthy”
-MQTT_PASSWORD = “Mitesh12”
+MQTT_USER = miteshmurthy
+MQTT_PASSWORD = "Mitesh12”
 MQTT_TOPIC = "sensor/data"
 
 # Blynk Authentication Token
